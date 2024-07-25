@@ -1,3 +1,10 @@
+#models
+.pt
+yolov5s.pt
+yolov9c.pt
+#Folder not for public access
+data/
+results/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
