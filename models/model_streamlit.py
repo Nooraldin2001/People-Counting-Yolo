@@ -24,7 +24,7 @@ def predict_and_detect(chosen_model, img, classes=[], conf=0.5, rectangle_thickn
                         cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), text_thickness)
     return img, results
 
-def process_video(video_path, output_path, roi, model):
+def process_video(video_path, output_path, model, batch_size=4):
     video = cv2.VideoCapture(video_path)
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -33,36 +33,55 @@ def process_video(video_path, output_path, roi, model):
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    mask = np.zeros((height, width), dtype=np.uint8)
-    roi_corners = np.array(roi, dtype=np.int32)
-    cv2.fillPoly(mask, [roi_corners], (255, 255, 255))
-
-    count = 0
-    centroids = []
+    frames = []
+    processed_frames = []
 
     while True:
         ret, frame = video.read()
         if not ret:
             break
 
-        frame, results = predict_and_detect(model, frame, classes=["person"], conf=0.5)
-        people = [box for result in results for box in result.boxes if result.names[int(box.cls[0])] == "person"]
+        frames.append(frame)
 
-        for person in people:
-            x, y = int((person.xyxy[0][0] + person.xyxy[0][2]) / 2), int((person.xyxy[0][1] + person.xyxy[0][3]) / 2)
-            if mask[y, x] == 255:
-                if not any(np.linalg.norm(np.array([x, y]) - np.array(c)) < 50 for c in centroids):
-                    count += 1
-                    centroids.append((x, y))
-                cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+        if len(frames) == batch_size:
+            # Process batch
+            results = model(frames, classes=[0], conf=0.5)  # 0 is the class index for 'person'
 
-        cv2.polylines(frame, [roi_corners], True, (0, 255, 0), 2)
-        cv2.putText(frame, f'People in area: {count}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        out.write(frame)
-        cv2.imshow('Frame', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            for i, result in enumerate(results):
+                count = len(result.boxes)
+                
+                for box in result.boxes:
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    cv2.rectangle(frames[i], (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+
+                cv2.putText(frames[i], f'People in frame: {count}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                processed_frames.append(frames[i])
+
+            # Write processed frames to video
+            for frame in processed_frames:
+                out.write(frame)
+
+            frames = []
+            processed_frames = []
+
+    # Process any remaining frames
+    if frames:
+        results = model(frames, classes=[0], conf=0.5)
+        for i, result in enumerate(results):
+            count = len(result.boxes)
+            
+            for box in result.boxes:
+                x1, y1, x2, y2 = box.xyxy[0]
+                cv2.rectangle(frames[i], (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+
+            cv2.putText(frames[i], f'People in frame: {count}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            out.write(frames[i])
 
     video.release()
     out.release()
-    cv2.destroyAllWindows()
+
+    return output_path
+
+    # video.release()
+    # out.release()
+    # cv2.destroyAllWindows()
