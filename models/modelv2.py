@@ -91,14 +91,13 @@ while True:
     frame, results = predict_and_detect(model, frame, classes=[0], conf=0.5)
     people = [box for result in results for box in result.boxes if result.names[int(box.cls[0])] == "person"]
     
+    count = 0  # Reset count for each frame
     for person in people:
         x1, y1, x2, y2 = person.xyxy[0]
         centroid = (int((x1 + x2) / 2), int((y1 + y2) / 2))
         
         if mask[centroid[1], centroid[0]] == 255:  # Check if the centroid is in the ROI
-            if not is_close_to_any(centroid, centroids):
-                count += 1
-                centroids.append(centroid)
+            count += 1  # Increment count for each person in the ROI
             cv2.circle(frame, centroid, 5, (0, 255, 0), -1)
     
     cv2.polylines(frame, [roi_corners], True, (0, 255, 0), 2)
